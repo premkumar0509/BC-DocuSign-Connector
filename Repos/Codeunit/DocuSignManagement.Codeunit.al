@@ -20,8 +20,11 @@ codeunit 50100 "DocuSign Management"
         if not DocuSignSetup.Get() then
             Error('DocuSign Setup not configured.');
 
-        if DocuSignSetup."Token Expiry" < CurrentDateTime then
-            RefreshAccessToken();
+        if DocuSignSetup."Token Expiry" = 0DT then
+            GetAccessToken()
+        else
+            if DocuSignSetup."Token Expiry" < CurrentDateTime then
+                RefreshAccessToken();
 
         SalesHeader.Get(DocumentType, DocumentNo);
 
@@ -56,6 +59,94 @@ codeunit 50100 "DocuSign Management"
                 Error('Failed to send document. Response: %1', HttpResponse.HttpStatusCode);
     end;
 
+
+    procedure GetAccessToken()
+    var
+        DocuSignSetup: Record "DocuSign Setup";
+        Base64Convert: Codeunit "Base64 Convert";
+        HttpClient: HttpClient;
+        HttpContent: HttpContent;
+        HttpResponse: HttpResponseMessage;
+        Headers: HttpHeaders;
+        RequestBody: Text;
+        ResponseText: Text;
+        JsonResponse: JsonObject;
+        JsonToken: JsonToken;
+        AccessToken: Text;
+        RefreshToken: Text;
+        ExpiryTime: Integer;
+        Time: Time;
+    begin
+        DocuSignSetup.Get();
+
+        RequestBody := 'grant_type=authorization_code' +
+                       '&code=' + DocuSignSetup."Authorization Code";
+
+        HttpContent.WriteFrom(RequestBody);
+        HttpContent.GetHeaders(Headers);
+        Headers.Clear();
+        Headers.Add('Content-Type', 'application/x-www-form-urlencoded');
+        HttpClient.DefaultRequestHeaders().Add('Authorization', 'Basic ' + Base64Convert.ToBase64(DocuSignSetup."Client ID" + ':' + DocuSignSetup."Client Secret", false));
+
+        if HttpClient.Post('https://account-d.docusign.com/oauth/token', HttpContent, HttpResponse) then begin
+            HttpResponse.Content.ReadAs(ResponseText);
+
+            if HttpResponse.IsSuccessStatusCode then begin
+                JsonResponse.ReadFrom(ResponseText);
+
+                // Extract Access Token
+                if JsonResponse.Get('access_token', JsonToken) then
+                    AccessToken := JsonToken.AsValue().AsText();
+
+                // Extract Refresh Token
+                if JsonResponse.Get('refresh_token', JsonToken) then
+                    RefreshToken := JsonToken.AsValue().AsText();
+
+                // Extract Expiry Time
+                if JsonResponse.Get('expires_in', JsonToken) then
+                    ExpiryTime := JsonToken.AsValue().AsInteger();
+
+                // Store tokens in the table
+                DocuSignSetup."Access Token" := CopyStr(AccessToken, 1, MaxStrLen(DocuSignSetup."Access Token"));
+                DocuSignSetup."Refresh Token" := CopyStr(RefreshToken, 1, MaxStrLen(DocuSignSetup."Refresh Token"));
+                Time := DT2Time(CurrentDateTime) + (ExpiryTime * 1000);
+                DocuSignSetup."Token Expiry" := CreateDateTime(Today, Time);
+                DocuSignSetup.Modify();
+            end else begin
+                // Improved error handling
+                JsonResponse.ReadFrom(ResponseText);
+                if JsonResponse.Get('error_description', JsonToken) then begin
+                    if ('expired_client_token' = JsonToken.AsValue().AsText()) and Confirm('Auth Code is expired! Do you want to generate new ?') then
+                        GetAuthorizationCode()
+                    else
+                        Error('');
+                end
+                else
+                    Error('Failed to get access token. Status Code: %1, Response: %2', HttpResponse.HttpStatusCode, ResponseText);
+            end;
+        end;
+    end;
+
+    procedure GetAuthorizationCode(): Text
+    var
+        DocuSignSetup: Record "DocuSign Setup";
+        AuthURL: Text;
+    begin
+        DocuSignSetup.Get();
+        DocuSignSetup.TestField("Client ID");
+        DocuSignSetup.TestField("Redirect URI");
+
+        AuthURL := 'https://account-d.docusign.com/oauth/auth?' +
+                   'response_type=code' +
+                   '&scope=signature' +
+                   '&client_id=' + DocuSignSetup."Client ID" +
+                   '&redirect_uri=' + DocuSignSetup."Redirect URI";
+
+        Hyperlink(AuthURL);
+
+        exit(AuthURL);
+    end;
+
     procedure RefreshAccessToken()
     var
         DocuSignSetup: Record "DocuSign Setup";
@@ -75,10 +166,8 @@ codeunit 50100 "DocuSign Management"
             Error('DocuSign Setup not configured.');
 
         RequestBody := 'grant_type=authorization_code' +
-                       '&code=' + DocuSignSetup."Access Token" +
-                       '&client_id=' + DocuSignSetup."Client ID" +
-                       '&client_secret=' + DocuSignSetup."Client Secret" +
-                       '&redirect_uri=' + DocuSignSetup."Redirect URI";
+                       '&code=' + DocuSignSetup."Authorization Code" +
+                       '&client_id=' + DocuSignSetup."Client ID";
 
         HttpContent.WriteFrom(RequestBody);
         HttpContent.GetHeaders(Headers);
@@ -89,7 +178,6 @@ codeunit 50100 "DocuSign Management"
             HttpResponse.Content.ReadAs(ResponseText);
 
             if HttpResponse.IsSuccessStatusCode then begin
-
                 JsonResponse.ReadFrom(ResponseText);
 
                 // Extract Access Token
@@ -105,15 +193,13 @@ codeunit 50100 "DocuSign Management"
                     ExpiryTime := JsonToken.AsValue().AsTime();
 
                 // Store tokens in the table
-                DocuSignSetup."Access Token" := AccessToken;
-                DocuSignSetup."Refresh Token" := RefreshToken;
+                DocuSignSetup."Access Token" := CopyStr(AccessToken, 1, MaxStrLen(DocuSignSetup."Access Token"));
+                DocuSignSetup."Refresh Token" := CopyStr(RefreshToken, 1, MaxStrLen(DocuSignSetup."Refresh Token"));
                 DocuSignSetup."Token Expiry" := CreateDateTime(Today, ExpiryTime);
                 DocuSignSetup.Modify();
-            end
-            else
-                Error('Failed to get access token. %1', ResponseText);
-        end else
-            Error('Failed to get access token.');
+            end else
+                // Improved error handling
+                Error('Failed to get access token. Status Code: %1, Response: %2', HttpResponse.HttpStatusCode, ResponseText);
+        end;
     end;
-
 }

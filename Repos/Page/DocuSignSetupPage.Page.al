@@ -32,10 +32,10 @@ page 50100 "DocuSign Setup Page"
                     ApplicationArea = All;
                     ToolTip = 'Specifies the value of the API Base URL field.';
                 }
-                field("Authorization Code"; Rec."Access Token")
+                field("Authorization Code"; Rec."Authorization Code")
                 {
                     ApplicationArea = All;
-                    ToolTip = 'Specifies the value of the Access Token field.';
+                    ToolTip = 'Specifies the value of the Authorization Token field.';
                 }
 
                 field("Redirect URI"; Rec."Redirect URI")
@@ -51,22 +51,24 @@ page 50100 "DocuSign Setup Page"
     {
         area(processing)
         {
-            action("Get Token")
+            action("Get Authorization Code")
             {
                 ApplicationArea = All;
-                Image = AllocatedCapacity;
-                Caption = 'Get Access Token';
-                ToolTip = 'Executes the Get Access Token action.';
+                Image = LaunchWeb;
+                Caption = 'Get Authorization Code';
+                ToolTip = 'Executes the Get Authorization Code action.';
 
                 trigger OnAction()
+                var
+                    DocuSignManagement: Codeunit "DocuSign Management";
                 begin
-                    GetAuthorizationURL();
+                    DocuSignManagement.GetAuthorizationCode();
                 end;
             }
         }
         area(Promoted)
         {
-            actionref(GetToken_Promoted; "Get Token")
+            actionref(GetAuthorizationCode_Promoted; "Get Authorization Code")
             {
             }
         }
@@ -79,24 +81,5 @@ page 50100 "DocuSign Setup Page"
             Rec.Init();
             Rec.Insert();
         end;
-    end;
-
-    procedure GetAuthorizationURL(): Text
-    var
-        AuthURL: Text;
-    begin
-        Rec.TestField("Client ID");
-        Rec.TestField("Redirect URI");
-
-        AuthURL := 'https://account-d.docusign.com/oauth/auth?' +
-                   'response_type=code' +
-                   '&scope=signature' +
-                   '&client_id=' + Rec."Client ID" +
-                   '&redirect_uri=' + Rec."Redirect URI";
-
-        Message('Click OK to open login page.');
-        Hyperlink(AuthURL);
-
-        exit(AuthURL);
     end;
 }

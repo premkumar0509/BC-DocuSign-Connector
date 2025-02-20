@@ -19,6 +19,7 @@ table 50100 "DocuSign Setup"
         field(7; "Access Token"; Text[2048]) { Caption = 'Access Token'; }
         field(8; "Refresh Token"; Text[2048]) { Caption = 'Refresh Token'; }
         field(9; "Token Expiry"; DateTime) { Caption = 'Token Expiry'; }
+        field(10; "Authorization Code"; Text[2048]) { Caption = 'Authorization Code'; }
     }
 
     keys { key(PK; "Primary Key") { Clustered = true; } }
