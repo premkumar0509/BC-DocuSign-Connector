@@ -35,7 +35,7 @@ codeunit 50100 "DocuSign Management"
     end;
 
     [TryFunction]
-    procedure TrySendDocument(var DocusignLog: Record "Docusign Log")
+    local procedure TrySendDocument(var DocusignLog: Record "Docusign Log")
     var
         DocuSignSetup: Record "DocuSign Setup";
         HttpClient: HttpClient;
@@ -98,7 +98,7 @@ codeunit 50100 "DocuSign Management"
         exit(Base64Convert.ToBase64(InStr, false));
     end;
 
-    procedure GenerateRequestBody(DocumentID: Integer; DocumentName: Text; DocumentBase64: Text; Receipt: Text; ReceiptName: Text; Subject: Text): Text;
+    local procedure GenerateRequestBody(DocumentID: Integer; DocumentName: Text; DocumentBase64: Text; Receipt: Text; ReceiptName: Text; Subject: Text): Text;
     var
         JsonObject: JsonObject;
         JsonArray: JsonArray;
