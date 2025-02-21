@@ -22,6 +22,11 @@ page 50100 "DocuSign Setup Page"
                     ApplicationArea = All;
                     ToolTip = 'Specifies the value of the Client Secret field.';
                 }
+                field("User ID"; Rec."User ID")
+                {
+                    ApplicationArea = All;
+                    ToolTip = 'Specifies the value of the User ID field.';
+                }
                 field("Account ID"; Rec."Account ID")
                 {
                     ApplicationArea = All;
@@ -32,16 +37,20 @@ page 50100 "DocuSign Setup Page"
                     ApplicationArea = All;
                     ToolTip = 'Specifies the value of the API Base URL field.';
                 }
+                field("Redirect URI"; Rec."Redirect URI")
+                {
+                    ApplicationArea = All;
+                    ToolTip = 'Specifies the value of the Redirect URI field.';
+                }
                 field("Authorization Code"; Rec."Authorization Code")
                 {
                     ApplicationArea = All;
                     ToolTip = 'Specifies the value of the Authorization Token field.';
                 }
-
-                field("Redirect URI"; Rec."Redirect URI")
+                field("Token Expiry"; Rec."Token Expiry")
                 {
                     ApplicationArea = All;
-                    ToolTip = 'Specifies the value of the Redirect URI field.';
+                    ToolTip = 'Specifies the value of the Token Expiry field.';
                 }
             }
         }
