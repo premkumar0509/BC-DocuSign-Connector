@@ -13,7 +13,7 @@ codeunit 50100 "DocuSign Management"
         DocusignLog.Subject := 'Order Confirmation - ' + SalesHeader."No.";
         DocusignLog.Recipients := SalesHeader."Sell-to E-Mail";
         DocusignLog."Recipients Name" := SalesHeader."Bill-to Name";
-        DocusignLog."File Name" := Format(SalesHeader."Document Type") + ' - ' + SalesHeader."No.";
+        DocusignLog."File Name" := Format(SalesHeader."Document Type") + ' - ' + SalesHeader."No." + '.pdf';
         DocusignLog.Insert(true);
 
         if TrySendDocument(DocusignLog) then
@@ -264,8 +264,46 @@ codeunit 50100 "DocuSign Management"
                 if JsonObject.Get('status', JsonToken) then
                     exit(JsonToken.AsValue().AsText());
             end else
-                Error('Failed to retrieve DocuSign envelope status.');
+                Error('Failed to get status. Status Code: %1, Response: %2', Response.HttpStatusCode, ReponseBody);
         end else
-            Error('HTTP request to DocuSign failed.');
+            Error('HTTP request to DocuSign failed. - %1', GetLastErrorText());
+    end;
+
+    procedure DownloadSignedDocument(EnvelopeId: Text; DocumentID: Integer; FileName: Text)
+    var
+        DocuSignSetup: Record "DocuSign Setup";
+        TokenType: Option AccessToken,RefreshToken;
+        Client: HttpClient;
+        RequestHeaders: HttpHeaders;
+        RequestMessage: HttpRequestMessage;
+        Response: HttpResponseMessage;
+        AcessToken, ReponseBody : Text;
+        FileContent: InStream;
+    begin
+        DocuSignSetup.Get();
+
+        if DocuSignSetup."Token Expiry" = 0DT then
+            AcessToken := GetToken(TokenType::AccessToken)
+        else
+            if DocuSignSetup."Token Expiry" < CurrentDateTime then
+                AcessToken := GetToken(TokenType::RefreshToken)
+            else
+                AcessToken := DocuSignSetup."Access Token";
+
+        RequestMessage.SetRequestUri('https://demo.docusign.net/restapi/v2.1/accounts/' + DocuSignSetup."Account ID" + '/envelopes/' + EnvelopeId + '/documents/' + Format(DocumentID));
+        RequestMessage.Method('GET');
+        RequestMessage.GetHeaders(RequestHeaders);
+        RequestHeaders.Add('Authorization', 'Bearer ' + AcessToken);
+
+        if Client.Send(RequestMessage, Response) then begin
+            if Response.IsSuccessStatusCode then begin
+                Response.Content.ReadAs(FileContent);
+                DownloadFromStream(FileContent, '', '', '', FileName);
+            end else begin
+                Response.Content.ReadAs(ReponseBody);
+                Error('Failed to get document. Status Code: %1, Response: %2', Response.HttpStatusCode, ReponseBody);
+            end;
+        end else
+            Error('HTTP request to DocuSign failed. - %1', GetLastErrorText());
     end;
 }

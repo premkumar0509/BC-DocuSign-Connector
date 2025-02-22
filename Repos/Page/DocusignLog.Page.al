@@ -88,12 +88,27 @@ page 50101 "Docusign Log"
                     Rec.Modify();
                 end;
             }
+            action("Download Signed Document")
+            {
+                ApplicationArea = All;
+                Caption = 'Download Signed Document';
+                Image = Download;
+                ToolTip = 'Executes the Download Signed Document action.';
+                trigger OnAction();
+                var
+                    DocuSignManagement: Codeunit "DocuSign Management";
+                begin
+                    DocuSignManagement.DownloadSignedDocument(Rec."Envelope ID", Rec."Document ID", Rec."File Name");
+                end;
+            }
         }
         area(Promoted)
         {
             actionref(CheckStatus_Promoted; "Check Status")
             {
-
+            }
+            actionref(DownloadSignedDocument_Promoted; "Download Signed Document")
+            {
             }
         }
     }
