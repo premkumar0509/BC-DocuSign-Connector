@@ -42,7 +42,7 @@ page 50100 "DocuSign Setup Page"
                     ApplicationArea = All;
                     ToolTip = 'Specifies the value of the Redirect URI field.';
                 }
-                field("Authorization Code"; Rec."Authorization Code")
+                field("Authorization Code"; Rec."Auth Code")
                 {
                     ApplicationArea = All;
                     ToolTip = 'Specifies the value of the Authorization Token field.';

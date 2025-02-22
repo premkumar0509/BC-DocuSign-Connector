@@ -30,7 +30,7 @@ codeunit 50100 "DocuSign Management"
     var
         DocusignLog: Record "Docusign Log";
     begin
-        if DocusignLog.FindSet() then
+        if DocusignLog.FindLast() then
             exit(DocusignLog."Document ID");
     end;
 
@@ -44,16 +44,21 @@ codeunit 50100 "DocuSign Management"
         HttpResponse: HttpResponseMessage;
         TokenType: Option AccessToken,RefreshToken;
         APIEndpoint, Base64Text, RequestBody, ResponseBody : Text;
+        JsonResponse: JsonObject;
+        JsonToken: JsonToken;
+        AcessToken: Text;
     begin
         // Retrieve API credentials
         if not DocuSignSetup.Get() then
             Error('DocuSign Setup not configured.');
 
         if DocuSignSetup."Token Expiry" = 0DT then
-            GetToken(TokenType::AccessToken)
+            AcessToken := GetToken(TokenType::AccessToken)
         else
             if DocuSignSetup."Token Expiry" < CurrentDateTime then
-                GetToken(TokenType::RefreshToken);
+                AcessToken := GetToken(TokenType::RefreshToken)
+            else
+                AcessToken := DocuSignSetup."Access Token";
 
         Base64Text := GetReportBase64Text(DocusignLog."Source Document Type", DocusignLog."Source Document No.");
 
@@ -67,13 +72,19 @@ codeunit 50100 "DocuSign Management"
         HttpContent.GetHeaders(Headers);
         Headers.Clear();
         Headers.Add('Content-Type', 'application/json');
-        HttpClient.DefaultRequestHeaders().Add('Authorization', 'Bearer ' + DocuSignSetup."Access Token");
+        HttpClient.DefaultRequestHeaders().Add('Authorization', 'Bearer ' + AcessToken);
         DocusignLog.SetRequestBody(RequestBody);
 
         if HttpClient.Post(APIEndpoint, HttpContent, HttpResponse) then begin
             HttpResponse.Content.ReadAs(ResponseBody);
             DocusignLog.SetResponseBody(ResponseBody);
-            if not (HttpResponse.HttpStatusCode = 201) then
+            if HttpResponse.HttpStatusCode = 201 then begin
+                JsonResponse.ReadFrom(ResponseBody);
+                // Extract Envelope ID
+                if JsonResponse.Get('envelopeId', JsonToken) then
+                    DocusignLog."Envelope ID" := CopyStr(JsonToken.AsValue().AsText(), 1, MaxStrLen(DocusignLog."Envelope ID"));
+
+            end else
                 Error('Failed to send document. Response Code: %1, Response: %2', HttpResponse.HttpStatusCode, ResponseBody);
         end;
     end;
@@ -100,13 +111,8 @@ codeunit 50100 "DocuSign Management"
 
     local procedure GenerateRequestBody(DocumentID: Integer; DocumentName: Text; DocumentBase64: Text; Receipt: Text; ReceiptName: Text; Subject: Text): Text;
     var
-        JsonObject: JsonObject;
-        JsonArray: JsonArray;
-        RecipientsObject: JsonObject;
-        SignerArray: JsonArray;
-        SignerObject: JsonObject;
-        DocumentObject: JsonObject;
-        DocumentArray: JsonArray;
+        JsonObject, DocumentObject, SignerObject, RecipientsObject : JsonObject;
+        DocumentArray, SignerArray : JsonArray;
     begin
         DocumentObject.Add('documentBase64', DocumentBase64);
         DocumentObject.Add('documentId', DocumentID);
@@ -150,7 +156,7 @@ codeunit 50100 "DocuSign Management"
         exit(AuthURL);
     end;
 
-    local procedure GetToken(TokenType: Option AccessToken,RefreshToken)
+    local procedure GetToken(TokenType: Option AccessToken,RefreshToken) AccessToken: Text;
     var
         DocuSignSetup: Record "DocuSign Setup";
         Base64Convert: Codeunit "Base64 Convert";
@@ -159,10 +165,9 @@ codeunit 50100 "DocuSign Management"
         HttpResponse: HttpResponseMessage;
         Headers: HttpHeaders;
         RequestBody: Text;
-        ResponseText: Text;
+        ResponseBody: Text;
         JsonResponse: JsonObject;
         JsonToken: JsonToken;
-        AccessToken: Text;
         RefreshToken: Text;
         ExpiryTime: Integer;
         Time: Time;
@@ -170,7 +175,7 @@ codeunit 50100 "DocuSign Management"
         DocuSignSetup.Get();
 
         if TokenType = TokenType::AccessToken then
-            RequestBody := 'grant_type=authorization_code' + '&code=' + DocuSignSetup."Authorization Code"
+            RequestBody := 'grant_type=authorization_code' + '&code=' + DocuSignSetup."Auth Code"
         else
             if TokenType = TokenType::RefreshToken then
                 RequestBody := 'grant_type=refresh_token' + '&refresh_token=' + DocuSignSetup."Refresh Token";
@@ -182,10 +187,10 @@ codeunit 50100 "DocuSign Management"
         HttpClient.DefaultRequestHeaders().Add('Authorization', 'Basic ' + Base64Convert.ToBase64(DocuSignSetup."Client ID" + ':' + DocuSignSetup."Client Secret", false));
 
         if HttpClient.Post('https://account-d.docusign.com/oauth/token', HttpContent, HttpResponse) then begin
-            HttpResponse.Content.ReadAs(ResponseText);
+            HttpResponse.Content.ReadAs(ResponseBody);
 
             if HttpResponse.IsSuccessStatusCode then begin
-                JsonResponse.ReadFrom(ResponseText);
+                JsonResponse.ReadFrom(ResponseBody);
 
                 // Extract Access Token
                 if JsonResponse.Get('access_token', JsonToken) then
@@ -205,18 +210,62 @@ codeunit 50100 "DocuSign Management"
                 Time := DT2Time(CurrentDateTime) + (ExpiryTime * 1000);
                 DocuSignSetup."Token Expiry" := CreateDateTime(Today, Time);
                 DocuSignSetup.Modify();
+                Commit();
             end else begin
                 // Improved error handling
-                JsonResponse.ReadFrom(ResponseText);
+                JsonResponse.ReadFrom(ResponseBody);
                 if JsonResponse.Get('error_description', JsonToken) then begin
-                    if ('expired_client_token' = JsonToken.AsValue().AsText()) and Confirm('Auth Code is expired! Do you want to generate new ?') then
-                        GetAuthorizationCode()
-                    else
-                        Error('');
+                    if ('expired_client_token' = JsonToken.AsValue().AsText()) then begin
+
+                        if Confirm('Auth Code is expired! Do you want to generate new ?') then
+                            GetAuthorizationCode()
+                        else
+                            Error('');
+                    end else
+                        Error('Failed to get access token. Status Code: %1, Response: %2', HttpResponse.HttpStatusCode, ResponseBody);
                 end
                 else
-                    Error('Failed to get access token. Status Code: %1, Response: %2', HttpResponse.HttpStatusCode, ResponseText);
+                    Error('Failed to get access token. Status Code: %1, Response: %2', HttpResponse.HttpStatusCode, ResponseBody);
             end;
         end;
+    end;
+
+    procedure GetEnvelopeStatus(EnvelopeId: Text): Text
+    var
+        DocuSignSetup: Record "DocuSign Setup";
+        TokenType: Option AccessToken,RefreshToken;
+        Client: HttpClient;
+        RequestHeaders: HttpHeaders;
+        RequestMessage: HttpRequestMessage;
+        Response: HttpResponseMessage;
+        AcessToken, ReponseBody : Text;
+        JsonObject: JsonObject;
+        JsonToken: JsonToken;
+    begin
+        DocuSignSetup.Get();
+
+        if DocuSignSetup."Token Expiry" = 0DT then
+            AcessToken := GetToken(TokenType::AccessToken)
+        else
+            if DocuSignSetup."Token Expiry" < CurrentDateTime then
+                AcessToken := GetToken(TokenType::RefreshToken)
+            else
+                AcessToken := DocuSignSetup."Access Token";
+
+        RequestMessage.SetRequestUri('https://demo.docusign.net/restapi/v2.1/accounts/' + DocuSignSetup."Account ID" + '/envelopes/' + EnvelopeId);
+        RequestMessage.Method('GET');
+        RequestMessage.GetHeaders(RequestHeaders);
+        RequestHeaders.Add('Authorization', 'Bearer ' + AcessToken);
+
+        if Client.Send(RequestMessage, Response) then begin
+            if Response.IsSuccessStatusCode then begin
+                Response.Content.ReadAs(ReponseBody);
+                JsonObject.ReadFrom(ReponseBody);
+                if JsonObject.Get('status', JsonToken) then
+                    exit(JsonToken.AsValue().AsText());
+            end else
+                Error('Failed to retrieve DocuSign envelope status.');
+        end else
+            Error('HTTP request to DocuSign failed.');
     end;
 }

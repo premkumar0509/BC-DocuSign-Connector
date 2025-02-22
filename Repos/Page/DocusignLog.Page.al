@@ -52,12 +52,48 @@ page 50101 "Docusign Log"
                 }
                 field("Request Body"; Rec.GetRequestBody())
                 {
+                    Caption = 'Request Body';
                     ToolTip = 'Specifies the value of the Request Body field.';
                 }
                 field("Response Body"; Rec.GetResponseBody())
                 {
+                    Caption = 'Response Body';
                     ToolTip = 'Specifies the value of the Response Body field.';
                 }
+                field("Envelope ID"; Rec."Envelope ID")
+                {
+                    ToolTip = 'Specifies the value of the Envelope ID field.';
+                }
+            }
+        }
+    }
+
+    actions
+    {
+        area(Processing)
+        {
+            action("Check Status")
+            {
+                ApplicationArea = All;
+                Caption = 'Check Status';
+                Image = CheckDuplicates;
+                ToolTip = 'Executes the Check Status action.';
+                trigger OnAction();
+                var
+                    DocuSignManagement: Codeunit "DocuSign Management";
+                    Status: Text;
+                begin
+                    Status := DocuSignManagement.GetEnvelopeStatus(Rec."Envelope ID");
+                    Evaluate(Rec.Status, Status);
+                    Rec.Modify();
+                end;
+            }
+        }
+        area(Promoted)
+        {
+            actionref(CheckStatus_Promoted; "Check Status")
+            {
+
             }
         }
     }

@@ -36,12 +36,11 @@ table 50101 "Docusign Log"
         }
         field(8; "File Name"; Code[200])
         {
-            Caption = 'Document Name';
+            Caption = 'File Name';
         }
-        field(9; Status; Option)
+        field(9; Status; enum "DocuSign Envelope Status")
         {
             Caption = 'Status';
-            OptionMembers = Sent,Delivered,Signed,Declined,Voided,Expired,Deleted,Error;
         }
         field(10; "Request Body"; Blob)
         {
@@ -50,6 +49,10 @@ table 50101 "Docusign Log"
         field(11; "Response Body"; Blob)
         {
             Caption = 'Response Body';
+        }
+        field(12; "Envelope ID"; Text[50])
+        {
+            Caption = 'Envelope ID';
         }
     }
     keys
