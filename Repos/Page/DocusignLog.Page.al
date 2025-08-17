@@ -48,7 +48,7 @@ page 50101 "Docusign Log"
                 field(Status; Rec.Status)
                 {
                     ToolTip = 'Specifies the value of the Status field.';
-                    StyleExpr = StatusStyle;
+                    StyleExpr = this.StatusStyle;
                 }
                 field("Request Body"; Rec.GetRequestBody())
                 {
@@ -117,11 +117,11 @@ page 50101 "Docusign Log"
     begin
         case Rec.Status of
             Rec.Status::Sent:
-                StatusStyle := Format(PageStyle::Favorable);
+                this.StatusStyle := Format(PageStyle::Favorable);
             Rec.Status::Error:
-                StatusStyle := Format(PageStyle::Unfavorable);
+                this.StatusStyle := Format(PageStyle::Unfavorable);
             else
-                Clear(StatusStyle);
+                Clear(this.StatusStyle);
         end;
     end;
 
